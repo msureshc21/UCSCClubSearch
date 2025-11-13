@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom'; 
 import { auth } from '../firebase';
 import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 import ClubNavigation from '../components/ClubNavigation';
 import availableTags from '../data/availableTags';
 import { isClubProfileComplete } from '../utils/profileCompletion';
-import { Container, Card, Button, Form, Alert, Row, Col, Badge } from 'react-bootstrap';
+import { Container, Card, Button, Form, Alert, Row, Col, Badge, Modal } from 'react-bootstrap';
+import Cropper from 'react-easy-crop';
+import { getCroppedImg } from '../utils/imageCrop';
 
 const ClubProfilePage = () => {
   const db = getFirestore();
@@ -13,17 +15,35 @@ const ClubProfilePage = () => {
     name: '',
     email: '',
     instagram: '',
+    elevatorPitch: '',
     description: '',
     tags: [],
     imageUrls: [],
+    clubIcon: '',
   });
   const [newTag, setNewTag] = useState('');
-  const [images, setImages] = useState([]);
+  const [clubIcon, setClubIcon] = useState('');
+  const [carouselImages, setCarouselImages] = useState([]);
   const [profileComplete, setProfileComplete] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  
+  // Cropping state
+  const [showCropModal, setShowCropModal] = useState(false);
+  const [cropType, setCropType] = useState(null); // 'icon' or 'carousel'
+  const [imageSrc, setImageSrc] = useState(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+  const [cropping, setCropping] = useState(false);
+  
   const currentUser = auth.currentUser;
   const maxWords = 150;
   const wordCount = clubData.description.trim() === '' ? 0 : clubData.description.trim().split(/\s+/).length;
+
+  // Aspect ratios for different crop types
+  const getAspectRatio = () => {
+    return cropType === 'icon' ? 1 : 16 / 9; // 1:1 for icon, 16:9 for carousel
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -36,11 +56,14 @@ const ClubProfilePage = () => {
             name: data.name || '',
             email: data.email || '',
             instagram: data.instagram || '',
+            elevatorPitch: data.elevatorPitch || '',
             description: data.description || '',
             tags: data.tags || [],
             imageUrls: data.imageUrls || [],
+            clubIcon: data.clubIcon || '',
           });
-          setImages(data.imageUrls || []);
+          setClubIcon(data.clubIcon || '');
+          setCarouselImages(data.imageUrls || []);
           
           // Check profile completion on load
           const complete = await isClubProfileComplete(currentUser.uid);
@@ -81,14 +104,95 @@ const ClubProfilePage = () => {
     return data.secure_url;
   };
 
-  const handleImageUpload = async (e) => {
-    const files = Array.from(e.target.files);
-    // Upload all files to Cloudinary
-    const uploadPromises = files.map(file => uploadToCloudinary(file));
-    const urls = await Promise.all(uploadPromises);
-    const updatedImages = [...images, ...urls];
-    setImages(updatedImages);
-    setClubData({ ...clubData, imageUrls: updatedImages });
+  // Convert blob URL to File object
+  const blobToFile = (blobUrl, fileName) => {
+    return fetch(blobUrl)
+      .then(res => res.blob())
+      .then(blob => {
+        return new File([blob], fileName, { type: 'image/jpeg' });
+      });
+  };
+
+  // Handle file selection for icon or carousel
+  const handleFileSelect = (e, type) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImageSrc(reader.result);
+      setCropType(type);
+      setShowCropModal(true);
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = ''; // Reset input
+  };
+
+  // Handle crop completion
+  const onCropComplete = useCallback((croppedArea, croppedAreaPixels) => {
+    setCroppedAreaPixels(croppedAreaPixels);
+  }, []);
+
+  // Apply crop and upload
+  const handleCropComplete = async () => {
+    if (!imageSrc || !croppedAreaPixels || !cropType) return;
+
+    setCropping(true);
+    try {
+      // Get cropped image as blob URL
+      const croppedImageUrl = await getCroppedImg(
+        imageSrc,
+        croppedAreaPixels
+      );
+
+      // Convert blob URL to File
+      const fileName = cropType === 'icon' ? 'club-icon.jpg' : `carousel-${Date.now()}.jpg`;
+      const file = await blobToFile(croppedImageUrl, fileName);
+
+      // Upload to Cloudinary
+      const uploadedUrl = await uploadToCloudinary(file);
+
+      // Update state based on crop type
+      if (cropType === 'icon') {
+        setClubIcon(uploadedUrl);
+        setClubData({ ...clubData, clubIcon: uploadedUrl });
+      } else {
+        const updatedCarousel = [...carouselImages, uploadedUrl];
+        setCarouselImages(updatedCarousel);
+        setClubData({ ...clubData, imageUrls: updatedCarousel });
+      }
+
+      // Close modal and reset
+      setShowCropModal(false);
+      setImageSrc(null);
+      setCropType(null);
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
+      setCroppedAreaPixels(null);
+    } catch (error) {
+      console.error('Error cropping/uploading image:', error);
+      alert('Failed to crop and upload image. Please try again.');
+    } finally {
+      setCropping(false);
+    }
+  };
+
+  // Remove carousel image
+  const removeCarouselImage = (index) => {
+    const updated = carouselImages.filter((_, i) => i !== index);
+    setCarouselImages(updated);
+    setClubData({ ...clubData, imageUrls: updated });
+  };
+
+  // Replace club icon
+  const handleReplaceIcon = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e) => handleFileSelect(e, 'icon');
+    input.click();
   };
 
   const handleDescriptionChange = (e) => {
@@ -106,8 +210,9 @@ const ClubProfilePage = () => {
       const docRef = doc(db, 'clubs', currentUser.uid);
       await setDoc(docRef, {
         ...clubData,
-        imageUrls: images, // ensure we save the Cloudinary URLs
-      });
+        clubIcon: clubIcon,
+        imageUrls: carouselImages,
+      }, { merge: true });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
       
@@ -136,10 +241,12 @@ const ClubProfilePage = () => {
                       {!clubData.name.trim() && <li>Add your club name</li>}
                       {!clubData.email.trim() && <li>Add your club email</li>}
                       {!clubData.instagram.trim() && <li>Add your club Instagram</li>}
+                      {!clubData.elevatorPitch.trim() && 
+                        <li>Add an elevator pitch (required)</li>}
                       {(!clubData.description || clubData.description.trim().split(/\s+/).length < 10) && 
                         <li>Add a description with at least 10 words</li>}
-                      {(!clubData.imageUrls || clubData.imageUrls.length === 0) && 
-                        <li>Upload at least one image</li>}
+                      {(!carouselImages || carouselImages.length === 0) && 
+                        <li>Upload at least one carousel image</li>}
                       {(!clubData.tags || clubData.tags.length === 0) && 
                         <li>Add at least one tag</li>}
                     </ul>
@@ -163,39 +270,90 @@ const ClubProfilePage = () => {
                     />
                   </Form.Group>
 
+                  {/* Club Icon Section */}
+                  <Form.Group className="mb-4">
+                    <Form.Label className="fw-bold">🏷️ Club Icon</Form.Label>
+                    <p className="text-muted small mb-2">
+                      Upload a square icon for your club (recommended: 300x300px). This will be displayed as your club's profile picture. You can replace it anytime.
+                    </p>
+                    <div className="d-flex align-items-center gap-3">
+                      {clubIcon ? (
+                        <>
+                          <div className="position-relative">
+                            <img 
+                              src={clubIcon} 
+                              alt="Club icon" 
+                              className="rounded shadow-sm"
+                              style={{ height: '150px', width: '150px', objectFit: 'cover', border: '3px solid #0d6efd' }}
+                            />
+                          </div>
+                          <Button
+                            variant="outline-primary"
+                            onClick={handleReplaceIcon}
+                          >
+                            🔄 Replace Icon
+                          </Button>
+                        </>
+                      ) : (
+                        <div>
+                          <Form.Control
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleFileSelect(e, 'icon')}
+                            style={{ maxWidth: '300px' }}
+                          />
+                          <Form.Text className="text-muted d-block mt-1">
+                            Select an image to crop and upload as your club icon
+                          </Form.Text>
+                        </div>
+                      )}
+                    </div>
+                  </Form.Group>
+
+                  {/* Carousel Images Section */}
                   <Form.Group className="mb-3">
-                    <Form.Label className="fw-bold">Upload Images</Form.Label>
+                    <Form.Label className="fw-bold">🖼️ Carousel Images</Form.Label>
+                    <p className="text-muted small mb-2">
+                      Upload images for the carousel that students see when browsing clubs (recommended: 1200x675px, 16:9 aspect ratio). You can upload multiple images. Each image will be cropped to the proper size.
+                    </p>
                     <Form.Control
                       type="file"
-                      multiple
-                      onChange={handleImageUpload}
                       accept="image/*"
+                      onChange={(e) => handleFileSelect(e, 'carousel')}
+                      style={{ maxWidth: '300px' }}
                     />
-                    <div className="d-flex gap-2 mt-3 overflow-auto">
-                      {(images || []).map((url, index) => (
-                        <div key={index} className="position-relative">
-                          <img 
-                            src={url} 
-                            alt={`preview-${index}`} 
-                            className="rounded"
-                            style={{ height: '100px', width: '100px', objectFit: 'cover' }}
-                          />
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            className="position-absolute top-0 end-0"
-                            style={{ transform: 'translate(50%, -50%)' }}
-                            onClick={() => {
-                              const updated = images.filter((_, i) => i !== index);
-                              setImages(updated);
-                              setClubData({ ...clubData, imageUrls: updated });
-                            }}
-                          >
-                            ×
-                          </Button>
+                    <Form.Text className="text-muted d-block mt-1 mb-2">
+                      Select an image to crop and add to your carousel
+                    </Form.Text>
+                    {carouselImages.length > 0 && (
+                      <>
+                        <div className="d-flex gap-2 mt-3 overflow-auto" style={{ flexWrap: 'wrap' }}>
+                          {carouselImages.map((url, index) => (
+                            <div key={index} className="position-relative">
+                              <img 
+                                src={url} 
+                                alt={`carousel-${index}`} 
+                                className="rounded shadow-sm"
+                                style={{ height: '120px', width: '200px', objectFit: 'cover', border: '2px solid #dee2e6' }}
+                              />
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                className="position-absolute top-0 end-0 rounded-circle"
+                                style={{ transform: 'translate(50%, -50%)', width: '28px', height: '28px', padding: 0, fontSize: '16px', lineHeight: '1' }}
+                                onClick={() => removeCarouselImage(index)}
+                                title="Remove image"
+                              >
+                                ×
+                              </Button>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                        <Form.Text className="text-muted d-block mt-2">
+                          {carouselImages.length} image{carouselImages.length !== 1 ? 's' : ''} uploaded
+                        </Form.Text>
+                      </>
+                    )}
                   </Form.Group>
 
                   <Row>
@@ -224,6 +382,27 @@ const ClubProfilePage = () => {
                   </Row>
 
                   <Form.Group className="mb-3">
+                    <Form.Label className="fw-bold">
+                      🎯 Elevator Pitch <span className="text-danger">*</span>
+                    </Form.Label>
+                    <p className="text-muted small mb-2">
+                      A short, compelling pitch that appears on your club card (2-3 sentences). This is what students see first when browsing clubs.
+                    </p>
+                    <Form.Control
+                      as="textarea"
+                      name="elevatorPitch"
+                      value={clubData.elevatorPitch}
+                      rows="3"
+                      onChange={handleChange}
+                      placeholder="Write a compelling pitch that makes students want to join your club..."
+                      required
+                    />
+                    <Form.Text className="text-muted">
+                      {clubData.elevatorPitch.trim().split(/\s+/).filter(w => w.length > 0).length} words
+                    </Form.Text>
+                  </Form.Group>
+
+                  <Form.Group className="mb-3">
                     <Form.Label className="fw-bold">Description</Form.Label>
                     <Form.Control
                       as="textarea"
@@ -231,7 +410,7 @@ const ClubProfilePage = () => {
                       value={clubData.description}
                       rows="4"
                       onChange={handleDescriptionChange}
-                      placeholder="Describe your club..."
+                      placeholder="Describe your club in detail..."
                     />
                     <Form.Text className={`text-${wordCount > maxWords ? 'danger' : 'muted'}`}>
                       {wordCount}/{maxWords} words
@@ -298,6 +477,73 @@ const ClubProfilePage = () => {
           </Col>
         </Row>
       </Container>
+
+      {/* Crop Modal */}
+      <Modal 
+        show={showCropModal} 
+        onHide={() => {
+          setShowCropModal(false);
+          setImageSrc(null);
+          setCropType(null);
+        }}
+        size="lg"
+        centered
+      >
+        <Modal.Header closeButton>
+          <Modal.Title>
+            Crop {cropType === 'icon' ? 'Club Icon' : 'Carousel Image'}
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div style={{ position: 'relative', width: '100%', height: '400px', background: '#000' }}>
+            <Cropper
+              image={imageSrc}
+              crop={crop}
+              zoom={zoom}
+              aspect={getAspectRatio()}
+              onCropChange={setCrop}
+              onZoomChange={setZoom}
+              onCropComplete={onCropComplete}
+            />
+          </div>
+          <div className="mt-3">
+            <Form.Label>Zoom: {zoom.toFixed(2)}x</Form.Label>
+            <Form.Range
+              min={1}
+              max={3}
+              step={0.1}
+              value={zoom}
+              onChange={(e) => setZoom(parseFloat(e.target.value))}
+            />
+          </div>
+          <div className="mt-3 p-3 bg-light rounded">
+            <p className="text-muted small mb-0">
+              <strong>Instructions:</strong> {cropType === 'icon' 
+                ? 'Drag to position and use the zoom slider to adjust. The crop area is fixed to a square (1:1 ratio). Recommended final size: 300x300px.'
+                : 'Drag to position and use the zoom slider to adjust. The crop area is fixed to a wide rectangle (16:9 ratio). Recommended final size: 1200x675px.'}
+            </p>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button 
+            variant="secondary" 
+            onClick={() => {
+              setShowCropModal(false);
+              setImageSrc(null);
+              setCropType(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            variant="primary" 
+            onClick={handleCropComplete}
+            disabled={cropping}
+          >
+            {cropping ? 'Processing...' : 'Apply Crop & Upload'}
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </>
   );
 };

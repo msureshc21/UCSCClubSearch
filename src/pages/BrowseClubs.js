@@ -6,10 +6,32 @@ import { onAuthStateChanged } from 'firebase/auth';
 import availableTags from '../data/availableTags';
 import { Container, Card, Button, Badge, Form, Row, Col, Carousel } from 'react-bootstrap';
 
+// Add carousel control styles
+const carouselControlStyles = `
+  .browse-clubs-carousel .carousel-control-prev,
+  .browse-clubs-carousel .carousel-control-next {
+    width: 50px;
+    height: 50px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.9;
+    transition: opacity 0.3s ease;
+  }
+  .browse-clubs-carousel .carousel-control-prev:hover,
+  .browse-clubs-carousel .carousel-control-next:hover {
+    opacity: 1;
+  }
+  .browse-clubs-carousel .carousel-control-prev {
+    left: 10px;
+  }
+  .browse-clubs-carousel .carousel-control-next {
+    right: 10px;
+  }
+`;
+
 function BrowseClubs() {
   const [clubs, setClubs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState({});
   const [carouselIdx, setCarouselIdx] = useState({});
   const [search, setSearch] = useState('');
   const [selectedTags, setSelectedTags] = useState([]);
@@ -74,7 +96,6 @@ function BrowseClubs() {
     return matchesSearch && matchesTags;
   });
 
-  const handleExpand = (id) => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
   const handleCarousel = (id, dir, max) => setCarouselIdx(prev => ({
     ...prev,
     [id]: (prev[id] || 0) + dir < 0 ? max - 1 : ((prev[id] || 0) + dir) % max
@@ -138,6 +159,7 @@ function BrowseClubs() {
 
   return (
     <div className="min-vh-100" style={{ background: 'linear-gradient(135deg, #f7f7fa 60%, #e5f0ff 100%)' }}>
+      <style>{carouselControlStyles}</style>
       <StudentNavigation />
       <Container className="py-4" style={{ marginTop: '80px' }}>
         <h2 className="text-primary fw-bold mb-4">Browse Clubs</h2>
@@ -209,11 +231,10 @@ function BrowseClubs() {
               const bgColor = tagColorMap[firstTag] || '#fff';
               
               return (
-                <Col key={club.id} lg={4} md={6}>
+                <Col key={club.id} lg={5} md={6}>
                   <Card 
                     className="h-100 shadow-sm border-0" 
                     style={{ backgroundColor: bgColor }}
-                    onClick={() => handleExpand(club.id)}
                   >
                     <Card.Body className="p-4">
                       <Card.Title className="text-center fw-bold text-primary mb-3">
@@ -221,13 +242,43 @@ function BrowseClubs() {
                       </Card.Title>
                       
                       {imgs.length > 0 && (
-                        <div className="mb-3">
+                        <div className="mb-3 position-relative">
                           <Carousel 
                             activeIndex={carouselIdx[club.id] || 0}
                             onSelect={(index) => setCarouselIdx(prev => ({ ...prev, [club.id]: index }))}
                             indicators={false}
                             controls={true}
-                            className="mb-3"
+                            className="mb-3 browse-clubs-carousel"
+                            prevIcon={
+                              <span 
+                                aria-hidden="true" 
+                                className="carousel-control-prev-icon"
+                                style={{
+                                  backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                  borderRadius: '50%',
+                                  width: '45px',
+                                  height: '45px',
+                                  backgroundSize: '50%',
+                                  border: '3px solid white',
+                                  boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+                                }}
+                              />
+                            }
+                            nextIcon={
+                              <span 
+                                aria-hidden="true" 
+                                className="carousel-control-next-icon"
+                                style={{
+                                  backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                  borderRadius: '50%',
+                                  width: '45px',
+                                  height: '45px',
+                                  backgroundSize: '50%',
+                                  border: '3px solid white',
+                                  boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+                                }}
+                              />
+                            }
                           >
                             {imgs.map((img, idx) => (
                               <Carousel.Item key={idx}>
@@ -235,11 +286,20 @@ function BrowseClubs() {
                                   src={img} 
                                   alt={`Club ${idx + 1}`} 
                                   className="d-block w-100 rounded"
-                                  style={{ height: '200px', objectFit: 'cover' }}
+                                  style={{ height: '220px', objectFit: 'cover' }}
                                 />
                               </Carousel.Item>
                             ))}
                           </Carousel>
+                        </div>
+                      )}
+                      
+                      {/* Elevator Pitch - Always Visible */}
+                      {club.elevatorPitch && (
+                        <div className="mb-3">
+                          <p className="text-muted mb-0" style={{ fontSize: '0.95rem', lineHeight: '1.5' }}>
+                            {club.elevatorPitch}
+                          </p>
                         </div>
                       )}
                       
@@ -258,25 +318,6 @@ function BrowseClubs() {
                               {tag}
                             </Badge>
                           ))}
-                        </div>
-                      )}
-                      
-                      {/* Expandable Description */}
-                      {expanded[club.id] && (
-                        <div className="mb-3 p-3 bg-light rounded">
-                          <div className="mb-2">
-                            <strong>Description:</strong> {club.description}
-                          </div>
-                          {club.email && (
-                            <div className="mb-2">
-                              <strong>Email:</strong> <a href={`mailto:${club.email}`} className="text-decoration-none">{club.email}</a>
-                            </div>
-                          )}
-                          {club.instagram && (
-                            <div className="mb-2">
-                              <strong>Instagram:</strong> <a href={`https://instagram.com/${club.instagram.replace('@', '')}`} target="_blank" rel="noopener noreferrer" className="text-decoration-none">{club.instagram}</a>
-                            </div>
-                          )}
                         </div>
                       )}
                       

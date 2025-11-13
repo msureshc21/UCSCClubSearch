@@ -4,6 +4,7 @@ import { db, auth } from '../firebase';
 import { collection, query, where, getDocs, doc, getDoc, deleteDoc } from 'firebase/firestore';
 import { isEventArchived } from '../utils/eventArchiver';
 import { Container, Card, Button, Form, Table, ProgressBar, Row, Col, Badge, Modal, Alert } from 'react-bootstrap';
+import Carousel from 'react-bootstrap/Carousel';
 
 export default function ClubDashboard() {
   const [events, setEvents] = useState([]);
@@ -183,29 +184,48 @@ export default function ClubDashboard() {
                             </div>
                           </div>
                           
-                          <div className="mb-3">
-                            <strong>Event Details:</strong>
-                            <div className="row mt-2">
-                              <div className="col-md-6">
-                                <small className="text-muted">
-                                  <strong>Date:</strong> {event.date}<br/>
-                                  <strong>Time:</strong> {event.startTime} - {event.endTime}<br/>
-                                  <strong>Location:</strong> {event.location}
-                                </small>
-                              </div>
-                              <div className="col-md-6">
-                                <small className="text-muted">
-                                  <strong>Open to:</strong> {event.openTo === 'everyone' ? 'Everyone' : 'Club Members Only'}<br/>
-                                  <strong>Status:</strong> {isEventArchived(event) ? 'Archived' : 'Active'}
-                                </small>
-                              </div>
+                          <div className="row mb-3">
+                            <div className="col-md-6">
+                              <p className="text-muted mb-1">
+                                <i className="bi bi-calendar me-2"></i>
+                                {event.date}
+                              </p>
+                              <p className="text-muted mb-1">
+                                <i className="bi bi-clock me-2"></i>
+                                {event.startTime} - {event.endTime}
+                              </p>
+                            </div>
+                            <div className="col-md-6">
+                              <p className="text-muted mb-1">
+                                <i className="bi bi-geo-alt me-2"></i>
+                                {event.location}
+                              </p>
+                              <p className="text-muted mb-1">
+                                <i className="bi bi-people me-2"></i>
+                                {event.openTo === 'everyone' ? 'Open to Everyone' : 'Club Members Only'}
+                              </p>
                             </div>
                           </div>
-                          
-                          <div className="mb-3">
-                            <strong>Attendees:</strong>
-                            {attendeesInfo[event.id] && attendeesInfo[event.id].length > 0 ? (
-                              <Table size="sm" className="mt-2">
+
+                          {event.description && (
+                            <p className="text-muted mb-3">{event.description}</p>
+                          )}
+
+                          {Array.isArray(event.tags) && event.tags.length > 0 && (
+                            <div className="mb-3">
+                              {event.tags.map((tag, idx) => (
+                                <Badge key={idx} bg="light" text="dark" className="me-1">
+                                  #{tag}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Attendees Table */}
+                          {Array.isArray(attendeesInfo[event.id]) && attendeesInfo[event.id].length > 0 && (
+                            <div className="mt-3">
+                              <h6 className="fw-bold mb-2">Attendees ({attendeesInfo[event.id].length})</h6>
+                              <Table striped bordered hover size="sm">
                                 <thead>
                                   <tr>
                                     <th>Email</th>
@@ -213,18 +233,22 @@ export default function ClubDashboard() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {attendeesInfo[event.id].map((user, idx) => (
+                                  {attendeesInfo[event.id].map((attendee, idx) => (
                                     <tr key={idx}>
-                                      <td>{user.email}</td>
-                                      <td className="text-muted">{user.major}</td>
+                                      <td>{attendee.email}</td>
+                                      <td>{attendee.major}</td>
                                     </tr>
                                   ))}
                                 </tbody>
                               </Table>
-                            ) : (
-                              <p className="text-muted mb-0">No attendees yet.</p>
-                            )}
-                          </div>
+                            </div>
+                          )}
+
+                          {Array.isArray(attendeesInfo[event.id]) && attendeesInfo[event.id].length === 0 && (
+                            <p className="text-muted text-center py-3">
+                              No attendees yet. Share this event to get signups!
+                            </p>
+                          )}
                         </Card.Body>
                       </Card>
                     ))}
@@ -236,99 +260,157 @@ export default function ClubDashboard() {
 
           {/* Statistics Dashboard (Right) */}
           <Col lg={4}>
-            <Card className="shadow-sm border-0">
-              <Card.Header className="bg-primary text-white">
-                <h2 className="mb-0 fw-bold">Statistics</h2>
+            {/* Followers Card */}
+            <Card className="shadow-sm border-0 mb-4">
+              <Card.Header className="bg-success text-white">
+                <h5 className="mb-0 fw-bold">Followers</h5>
               </Card.Header>
               <Card.Body>
                 {loadingFollowers ? (
-                  <div className="text-center py-4">
-                    <div className="spinner-border text-primary" role="status">
+                  <div className="text-center py-3">
+                    <div className="spinner-border text-success" role="status">
                       <span className="visually-hidden">Loading...</span>
                     </div>
-                    <p className="mt-3">Loading followers...</p>
                   </div>
                 ) : (
                   <div>
-                    <div className="mb-4">
-                      <h5>Followers</h5>
-                      <div className="d-flex align-items-center mb-2">
-                        <span className="fw-bold me-2">{followers.length}</span>
-                        <span className="text-muted">total followers</span>
-                      </div>
-                      <ProgressBar 
-                        now={followers.length} 
-                        max={100} 
-                        className="mb-3"
-                        label={`${followers.length} followers`}
-                      />
+                    <div className="d-flex align-items-center justify-content-between mb-3">
+                      <h3 className="mb-0 text-success fw-bold">{followers.length}</h3>
+                      <Badge bg="success" className="px-2 py-1">
+                        Total Followers
+                      </Badge>
                     </div>
-
-                    <div className="mb-4">
-                      <h5>Event Statistics</h5>
-                      <div className="row text-center">
-                        <div className="col-6">
-                          <div className="border rounded p-3">
-                            <h4 className="text-primary mb-1">{filteredEvents.length}</h4>
-                            <small className="text-muted">{eventFilter} events</small>
-                          </div>
-                        </div>
-                        <div className="col-6">
-                          <div className="border rounded p-3">
-                            <h4 className="text-success mb-1">
-                              {filteredEvents.reduce((total, event) => 
-                                total + (Array.isArray(event.attendees) ? event.attendees.length : 0), 0
-                              )}
-                            </h4>
-                            <small className="text-muted">total signups</small>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {followers.length > 0 && (
+                    
+                    {followers.length > 0 ? (
                       <div>
-                        <h5>Recent Followers</h5>
-                        <div className="list-group list-group-flush">
+                        <h6 className="fw-bold mb-2">Recent Followers</h6>
+                        <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
                           {followers.slice(0, 5).map((follower, idx) => (
-                            <div key={idx} className="list-group-item d-flex justify-content-between align-items-center">
-                              <div>
-                                <div className="fw-bold">{follower.email}</div>
-                                <small className="text-muted">Major: {follower.major}</small>
+                            <div key={idx} className="d-flex align-items-center mb-2 p-2 rounded" style={{ backgroundColor: '#f8f9fa' }}>
+                              <div 
+                                className="rounded-circle d-flex align-items-center justify-content-center me-2"
+                                style={{ 
+                                  width: '35px', 
+                                  height: '35px', 
+                                  backgroundColor: '#198754',
+                                  color: 'white',
+                                  fontWeight: 'bold',
+                                  fontSize: '14px'
+                                }}
+                              >
+                                {follower.email.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="flex-grow-1">
+                                <div className="fw-bold" style={{ fontSize: '14px' }}>{follower.email}</div>
+                                <small className="text-muted">{follower.major}</small>
                               </div>
                             </div>
                           ))}
                         </div>
+                        {followers.length > 5 && (
+                          <p className="text-muted text-center mb-0 mt-2">
+                            +{followers.length - 5} more followers
+                          </p>
+                        )}
                       </div>
+                    ) : (
+                      <p className="text-muted text-center mb-0">
+                        No followers yet. Start promoting your club!
+                      </p>
                     )}
                   </div>
                 )}
+              </Card.Body>
+            </Card>
+
+            {/* Event Statistics */}
+            <Card className="shadow-sm border-0 mb-4">
+              <Card.Header className="bg-info text-white">
+                <h5 className="mb-0 fw-bold">Event Statistics</h5>
+              </Card.Header>
+              <Card.Body>
+                <div className="row text-center">
+                  <div className="col-6 mb-3">
+                    <div className="fw-bold text-info" style={{ fontSize: '2rem' }}>
+                      {filteredEvents.length}
+                    </div>
+                    <small className="text-muted">
+                      {eventFilter === 'active' ? 'Active' : 'Archived'} Events
+                    </small>
+                  </div>
+                  <div className="col-6 mb-3">
+                    <div className="fw-bold text-success" style={{ fontSize: '2rem' }}>
+                      {Object.values(attendeesInfo).reduce((total, attendees) => 
+                        total + (Array.isArray(attendees) ? attendees.length : 0), 0
+                      )}
+                    </div>
+                    <small className="text-muted">Total Signups</small>
+                  </div>
+                </div>
+                
+                {/* Average Attendance */}
+                {filteredEvents.length > 0 && (
+                  <div className="mt-3">
+                    <div className="d-flex justify-content-between align-items-center mb-2">
+                      <span className="fw-bold">Average Attendance</span>
+                      <span className="text-muted">
+                        {Math.round(
+                          Object.values(attendeesInfo).reduce((total, attendees) => 
+                            total + (Array.isArray(attendees) ? attendees.length : 0), 0
+                          ) / filteredEvents.length
+                        )}
+                      </span>
+                    </div>
+                    <ProgressBar 
+                      variant="info" 
+                      now={
+                        (Object.values(attendeesInfo).reduce((total, attendees) => 
+                          total + (Array.isArray(attendees) ? attendees.length : 0), 0
+                        ) / filteredEvents.length) / 10 * 100
+                      } 
+                      style={{ height: '8px' }}
+                    />
+                  </div>
+                )}
+              </Card.Body>
+            </Card>
+
+            {/* Quick Actions */}
+            <Card className="shadow-sm border-0">
+              <Card.Header className="bg-warning text-dark">
+                <h5 className="mb-0 fw-bold">Quick Actions</h5>
+              </Card.Header>
+              <Card.Body>
+                <div className="d-grid gap-2">
+                  <Button variant="primary" size="lg" href="/create-event">
+                    ➕ Create New Event
+                  </Button>
+                  <Button variant="outline-secondary" size="lg" href="/club-profile">
+                    ✏️ Edit Profile
+                  </Button>
+                  <Button variant="outline-info" size="lg" href="/club-event-calendar">
+                    📅 View Calendar
+                  </Button>
+                </div>
               </Card.Body>
             </Card>
           </Col>
         </Row>
       </Container>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Event Confirmation Modal */}
       <Modal show={deleteModalShow} onHide={() => setDeleteModalShow(false)}>
         <Modal.Header closeButton>
-          <Modal.Title className="text-danger fw-bold">⚠️ Delete Event</Modal.Title>
+          <Modal.Title>Confirm Event Deletion</Modal.Title>
         </Modal.Header>
         <Modal.Body>
+          <p>Are you sure you want to delete the event <strong>"{eventToDelete?.eventName}"</strong>?</p>
+          <p className="text-danger">
+            <strong>Warning:</strong> This action cannot be undone. All attendee information will be permanently lost.
+          </p>
           {deleteError && (
-            <Alert variant="danger" className="mb-3">
+            <Alert variant="danger" className="mt-3">
               {deleteError}
-            </Alert>
-          )}
-          <p>
-            Are you sure you want to delete <strong>"{eventToDelete?.eventName}"</strong>?
-          </p>
-          <p className="text-muted">
-            This action cannot be undone. All attendee signups will be lost.
-          </p>
-          {eventToDelete && Array.isArray(eventToDelete.attendees) && eventToDelete.attendees.length > 0 && (
-            <Alert variant="warning">
-              <strong>Warning:</strong> This event has {eventToDelete.attendees.length} attendee(s) signed up.
             </Alert>
           )}
         </Modal.Body>
@@ -341,10 +423,17 @@ export default function ClubDashboard() {
             onClick={confirmDeleteEvent}
             disabled={deleteLoading}
           >
-            {deleteLoading ? 'Deleting...' : 'Delete Event'}
+            {deleteLoading ? (
+              <>
+                <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                Deleting...
+              </>
+            ) : (
+              'Delete Event'
+            )}
           </Button>
         </Modal.Footer>
       </Modal>
     </div>
   );
-} 
+}

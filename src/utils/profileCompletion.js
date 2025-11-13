@@ -39,7 +39,7 @@ export const isClubProfileComplete = async (clubId) => {
     const clubData = clubSnap.data();
     
     // Check if required fields are filled
-    const requiredFields = ['name', 'description', 'email', 'instagram'];
+    const requiredFields = ['name', 'elevatorPitch', 'description', 'email', 'instagram'];
     const hasRequiredFields = requiredFields.every(field => 
       clubData[field] && clubData[field].trim() !== ''
     );
